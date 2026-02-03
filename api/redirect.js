@@ -2,7 +2,7 @@ export const config = { runtime: 'edge' };
 
 export default async function handler(req) {
   const url = new URL(req.url);
-  const gasUrl = "https://script.google.com/macros/s/AKfycbx-DspFQPKKLxC8WUrGO6yHFdG-HOZURibjZabX_QfEAAN6vVbaVWA120y3GIgMdbDXdw/exec";
+  const gasUrl = "https://script.google.com/macros/s/AKfycby6ne9DV4bYFwpLtqfko2SuyczBAqtbOz4E-Yb40A1pMY3RGJlzBvudIXSzdLWLo-orUA/exec";
 
   // 1. 強制過濾：如果是管理 API 請求
   if (url.pathname.includes('/api/manage') || url.searchParams.has("action") || req.method === "POST") {
