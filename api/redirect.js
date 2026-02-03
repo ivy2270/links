@@ -15,7 +15,7 @@ export default async function handler(req) {
   }
 
   // 加上 ?slug= 參數去詢問你的 GAS
-  const gasApi = `https://script.google.com/macros/s/AKfycbwYNZ34E5N8cY9NiviwSx1z3D1IOftPRBiLGYSq9U2vKHnDJrag3J09mLYuMoCghm4u_Q/exec?slug=${slug}`;
+  const gasApi = `https://script.google.com/macros/s/AKfycbx-DspFQPKKLxC8WUrGO6yHFdG-HOZURibjZabX_QfEAAN6vVbaVWA120y3GIgMdbDXdw/exec?slug=${slug}`;
 
   try {
     const response = await fetch(gasApi);
