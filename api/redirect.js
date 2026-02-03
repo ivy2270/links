@@ -1,33 +1,28 @@
-export const config = {
-  runtime: 'edge',
-};
+export const config = { runtime: 'edge' };
 
 export default async function handler(req) {
   const url = new URL(req.url);
-  // 取得路徑，例如 /test 會取得 test
-  const slug = url.pathname.split('/').filter(Boolean).pop(); 
+  const gasUrl = "https://script.google.com/macros/s/AKfycbx-DspFQPKKLxC8WUrGO6yHFdG-HOZURibjZabX_QfEAAN6vVbaVWA120y3GIgMdbDXdw/exec";
 
-  // 如果沒有 slug，回傳簡單的首頁
-  if (!slug) {
-    return new Response("<h1>Short Link Service</h1><p>Ready to redirect.</p>", {
-      headers: { "content-type": "text/html;charset=UTF-8" },
+  // 如果是 POST 請求 (來自後台管理介面)
+  if (req.method === "POST") {
+    const body = await req.json();
+    const response = await fetch(gasUrl, {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json" }
+    });
+    const result = await response.json();
+    return new Response(JSON.stringify(result), {
+      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
     });
   }
 
-  // 加上 ?slug= 參數去詢問你的 GAS
-  const gasApi = `https://script.google.com/macros/s/AKfycbx-DspFQPKKLxC8WUrGO6yHFdG-HOZURibjZabX_QfEAAN6vVbaVWA120y3GIgMdbDXdw/exec?slug=${slug}`;
+  // 如果是 GET 請求 (轉址邏輯)
+  const slug = url.pathname.split('/').filter(Boolean).pop();
+  if (!slug) return new Response("Admin Page", { status: 200 }); // 這裡可以回傳你的 index.html
 
-  try {
-    const response = await fetch(gasApi);
-    const data = await response.json();
-
-    if (data.status === "success" && data.url !== "404") {
-      // 302 是暫時跳轉，方便你以後隨時修改試算表裡的目標
-      return Response.redirect(data.url, 302);
-    } else {
-      return new Response("Oops! 這個短網址不存在。", { status: 404 });
-    }
-  } catch (error) {
-    return new Response("系統連線錯誤", { status: 500 });
-  }
+  const res = await fetch(`${gasUrl}?slug=${slug}`);
+  const data = await res.json();
+  return (data.status === "success") ? Response.redirect(data.url, 302) : new Response("404", { status: 404 });
 }
