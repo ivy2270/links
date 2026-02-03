@@ -2,6 +2,6 @@
   "rewrites": [
     { "source": "/", "destination": "/index.html" },
     { "source": "/api/manage", "destination": "/api/redirect" },
-    { "source": "/(.*)", "destination": "/api/redirect" }
+    { "source": "/:slug", "destination": "/api/redirect" }
   ]
 }
