@@ -3,14 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>短網址管理後台</title>
+    <title>短網址管理系統 | Rainchord</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <style>
+        body { background-color: #f8f9fa; }
+        .card { border: none; border-radius: 12px; }
+        .btn-primary { border-radius: 8px; }
+        code { color: #d63384; font-weight: bold; }
+        #loading-spinner { display: none; }
+    </style>
 </head>
-<body class="bg-light">
-    <div class="container py-5">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h2>🔗 短網址管理系統</h2>
+<body>
+
+<div class="container py-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="fw-bold text-primary">🔗 短網址管理系統</h2>
+        
+        <div id="login-section">
             <div id="g_id_onload"
                  data-client_id="726012910992-60ufmiqucaptr21sbgt06imohr39u9tb.apps.googleusercontent.com"
                  data-callback="handleCredentialResponse"
@@ -18,34 +28,42 @@
             </div>
             <div class="g_id_signin" data-type="standard"></div>
         </div>
+    </div>
 
-        <div id="admin-section" style="display: none;">
-            <div class="card mb-4 shadow-sm">
-                <div class="card-body">
-                    <h5 class="card-title">新增 / 修改連結</h5>
-                    <div class="row g-3">
-                        <div class="col-md-4">
-                            <input type="text" id="slug" class="form-control" placeholder="短代碼 (例如: sale)">
-                        </div>
-                        <div class="col-md-6">
-                            <input type="url" id="original_url" class="form-control" placeholder="原始網址 (https://...)">
-                        </div>
-                        <div class="col-md-2">
-                            <button onclick="upsertLink()" class="btn btn-primary w-100">儲存</button>
-                        </div>
+    <div id="admin-section" style="display: none;">
+        <div class="card shadow-sm mb-4">
+            <div class="card-body p-4">
+                <h5 class="card-title mb-3">新增 / 編輯連結</h5>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label">短代碼 (Slug)</label>
+                        <input type="text" id="slug" class="form-control" placeholder="例如: fb">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">目標網址 (Target URL)</label>
+                        <input type="url" id="original_url" class="form-control" placeholder="https://example.com">
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button onclick="upsertLink()" id="save-btn" class="btn btn-primary w-100">儲存連結</button>
                     </div>
                 </div>
             </div>
+        </div>
 
-            <div class="card shadow-sm">
-                <div class="card-body">
-                    <table class="table table-hover">
-                        <thead>
+        <div class="card shadow-sm">
+            <div class="card-body p-0">
+                <div class="p-3 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">現有連結列表</h5>
+                    <div id="loading-spinner" class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
                             <tr>
-                                <th>短代碼</th>
-                                <th>目標網址</th>
+                                <th class="ps-3">短代碼</th>
+                                <th>原始網址</th>
                                 <th>建立者</th>
-                                <th>動作</th>
+                                <th class="text-end pe-3">動作</th>
                             </tr>
                         </thead>
                         <tbody id="link-list">
@@ -55,71 +73,107 @@
             </div>
         </div>
     </div>
+</div>
 
-    <script>
-        let USER_TOKEN = "";
-        const GAS_URL = "https://script.google.com/macros/s/AKfycbx-DspFQPKKLxC8WUrGO6yHFdG-HOZURibjZabX_QfEAAN6vVbaVWA120y3GIgMdbDXdw/exec";
+<script>
+    let USER_TOKEN = "";
+    // 注意：這裡我們對接 Vercel 的 Proxy 路由，解決 CORS 跨域問題
+    const API_ENDPOINT = "/api/manage"; 
 
-        // 1. 處理 Google 登入回傳
-        function handleCredentialResponse(response) {
-            USER_TOKEN = response.credential;
-            document.getElementById('admin-section').style.display = 'block';
-            fetchList();
+    // 1. 處理 Google 登入
+    function handleCredentialResponse(response) {
+        USER_TOKEN = response.credential;
+        // 隱藏登入提示 (選用)
+        document.getElementById('admin-section').style.display = 'block';
+        fetchList();
+    }
+
+    // 2. 獲取連結清單
+    function fetchList() {
+        showLoading(true);
+        fetch(`${API_ENDPOINT}?action=list&id_token=${USER_TOKEN}`)
+            .then(res => res.json())
+            .then(res => {
+                if (res.status === "success") {
+                    renderList(res.data);
+                } else {
+                    alert("驗證失敗: " + res.message);
+                }
+            })
+            .catch(err => alert("系統錯誤，請檢查 Vercel Redirect 設定"))
+            .finally(() => showLoading(false));
+    }
+
+    // 3. 渲染列表
+    function renderList(data) {
+        const tbody = document.getElementById('link-list');
+        if (data.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-muted">目前沒有連結，快去新增一個吧！</td></tr>`;
+            return;
         }
+        tbody.innerHTML = data.map(item => `
+            <tr>
+                <td class="ps-3"><code>/${item.slug}</code></td>
+                <td class="text-truncate" style="max-width: 350px;">
+                    <a href="${item.url}" target="_blank" class="text-decoration-none">${item.url}</a>
+                </td>
+                <td><small class="text-muted">${item.owner}</small></td>
+                <td class="text-end pe-3">
+                    <button class="btn btn-sm btn-outline-primary" onclick="editLink('${item.slug}', '${item.url}')">編輯</button>
+                </td>
+            </tr>
+        `).join('');
+    }
 
-        // 2. 抓取清單
-        function fetchList() {
-            fetch(`${GAS_URL}?action=list&id_token=${USER_TOKEN}`)
-                .then(res => res.json())
-                .then(res => {
-                    if (res.status === "success") {
-                        renderList(res.data);
-                    } else {
-                        alert("讀取失敗: " + res.message);
-                    }
-                });
-        }
+    // 4. 新增或更新連結
+    function upsertLink() {
+        const slug = document.getElementById('slug').value.trim();
+        const original_url = document.getElementById('original_url').value.trim();
+        
+        if(!slug || !original_url) return alert("請填寫完整資訊");
 
-        function renderList(data) {
-            const tbody = document.getElementById('link-list');
-            tbody.innerHTML = data.map(item => `
-                <tr>
-                    <td><code>/${item.slug}</code></td>
-                    <td class="text-truncate" style="max-width: 300px;">${item.url}</td>
-                    <td>${item.owner}</td>
-                    <td>
-                        <button class="btn btn-sm btn-outline-secondary" onclick="editLink('${item.slug}', '${item.url}')">編輯</button>
-                    </td>
-                </tr>
-            `).join('');
-        }
+        const btn = document.getElementById('save-btn');
+        btn.disabled = true;
+        btn.innerText = "儲存中...";
 
-        // 3. 新增或修改
-        function upsertLink() {
-            const slug = document.getElementById('slug').value;
-            const original_url = document.getElementById('original_url').value;
-            
-            if(!slug || !original_url) return alert("請填寫完整");
-
-            fetch(GAS_URL, {
-                method: "POST",
-                mode: "no-cors", // 注意：GAS POST 跨域常需使用 no-cors
-                body: JSON.stringify({
-                    id_token: USER_TOKEN,
-                    action: "upsert",
-                    slug: slug,
-                    original_url: original_url
-                })
-            }).then(() => {
-                alert("請求已送出！(由於跨域限制，請手動重新整理清單)");
+        fetch(API_ENDPOINT, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                id_token: USER_TOKEN,
+                action: "upsert",
+                slug: slug,
+                original_url: original_url
+            })
+        })
+        .then(res => res.json())
+        .then(res => {
+            if(res.status === "success") {
+                alert("🎉 儲存成功！");
+                document.getElementById('slug').value = "";
+                document.getElementById('original_url').value = "";
                 fetchList();
-            });
-        }
+            } else {
+                alert("儲存失敗: " + res.message);
+            }
+        })
+        .catch(err => alert("連線錯誤"))
+        .finally(() => {
+            btn.disabled = false;
+            btn.innerText = "儲存連結";
+        });
+    }
 
-        function editLink(slug, url) {
-            document.getElementById('slug').value = slug;
-            document.getElementById('original_url').value = url;
-        }
-    </script>
+    function editLink(slug, url) {
+        document.getElementById('slug').value = slug;
+        document.getElementById('original_url').value = url;
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function showLoading(show) {
+        document.getElementById('loading-spinner').style.display = show ? 'block' : 'none';
+    }
+</script>
+
 </body>
 </html>
