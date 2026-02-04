@@ -61,7 +61,7 @@
         }
 
         @media (max-width: 768px) {
-            #success-alert { padding: 15px; } /* 手機縮小內距 */
+            #success-alert { padding: 15px; } 
         }
 
         .url-display {
@@ -85,6 +85,12 @@
                 border-radius: 15px; border: 1px solid #ffe5db;
             }
         }
+
+        /* 新增：登入資訊樣式 */
+        .user-badge {
+            background: #fff; border: 1.5px solid #ffe5db; padding: 5px 12px;
+            border-radius: 50px; display: flex; align-items: center; gap: 8px;
+        }
     </style>
 </head>
 <body>
@@ -96,13 +102,22 @@
         <h2 class="fw-bold m-0 d-flex align-items-center" style="color: var(--text-main);">
             <span class="me-2">🍊</span> 橘子短網址管理員
         </h2>
-        <div id="login-section" class="mt-2 mt-md-0">
-            <div id="g_id_onload"
-                 data-client_id="726012910992-60ufmiqucaptr21sbgt06imohr39u9tb.apps.googleusercontent.com"
-                 data-callback="handleCredentialResponse"
-                 data-auto_select="true">
+        
+        <div id="auth-section" class="mt-2 mt-md-0">
+            <div id="login-section">
+                <div id="g_id_onload"
+                     data-client_id="726012910992-60ufmiqucaptr21sbgt06imohr39u9tb.apps.googleusercontent.com"
+                     data-callback="handleCredentialResponse"
+                     data-auto_select="true">
+                </div>
+                <div class="g_id_signin" data-type="standard" data-shape="pill"></div>
             </div>
-            <div class="g_id_signin" data-type="standard" data-shape="pill"></div>
+            <div id="user-info-section" style="display: none;">
+                <div class="user-badge shadow-sm">
+                    <span id="user-email-display" class="small fw-bold" style="color: var(--text-main);"></span>
+                    <button onclick="logout()" class="btn btn-link btn-sm p-0 text-danger" title="登出"><i class="fas fa-sign-out-alt"></i></button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -173,21 +188,55 @@
     const API_ENDPOINT = "/api/manage"; 
     const BASE_URL = window.location.origin;
 
+    // 解析 JWT 的輔助函數
+    function decodeJwt(token) {
+        try {
+            const base64Url = token.split('.')[1];
+            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            return JSON.parse(window.atob(base64));
+        } catch (e) { return null; }
+    }
+
     function handleCredentialResponse(response) {
         USER_TOKEN = response.credential;
-        document.getElementById('admin-section').style.display = 'block';
-        document.getElementById('login-section').style.visibility = 'hidden';
-        fetchList();
+        const payload = decodeJwt(USER_TOKEN);
+        
+        if (payload && payload.email) {
+            document.getElementById('user-email-display').innerText = payload.email;
+            document.getElementById('user-info-section').style.display = 'block';
+            document.getElementById('login-section').style.display = 'none';
+            document.getElementById('admin-section').style.display = 'block';
+            fetchList();
+        }
+    }
+
+    function logout() {
+        USER_TOKEN = "";
+        document.getElementById('admin-section').style.display = 'none';
+        document.getElementById('user-info-section').style.display = 'none';
+        document.getElementById('login-section').style.display = 'block';
+        google.accounts.id.disableAutoSelect(); // 停止下次自動登入
+    }
+
+    // API 權限錯誤攔截器
+    function checkAuthError(res) {
+        if (res.status === "error" && res.message && res.message.includes("無權限")) {
+            alert("🔒 登入時效已過期，請重新登入！");
+            logout();
+            return true;
+        }
+        return false;
     }
 
     function fetchList() {
+        if (!USER_TOKEN) return;
         document.getElementById('list-loading').style.display = 'block';
         fetch(`${API_ENDPOINT}?action=list&id_token=${USER_TOKEN}`)
             .then(res => res.json())
             .then(res => { 
+                if (checkAuthError(res)) return;
                 if (res.status === "success") {
-                    const sortedData = res.data.reverse();
-                    renderList(sortedData); 
+                    renderList(res.data.reverse()); 
                 }
             })
             .finally(() => document.getElementById('list-loading').style.display = 'none');
@@ -253,6 +302,7 @@
         })
         .then(res => res.json())
         .then(res => {
+            if (checkAuthError(res)) return;
             if(res.status === "success") {
                 const fullUrl = `${BASE_URL}/${slug}`;
                 document.getElementById('new-full-url').innerText = fullUrl;
@@ -271,7 +321,12 @@
         fetch(API_ENDPOINT, {
             method: "POST",
             body: JSON.stringify({ id_token: USER_TOKEN, action: "delete", slug: slug })
-        }).then(() => fetchList());
+        })
+        .then(res => res.json())
+        .then(res => {
+            if (checkAuthError(res)) return;
+            fetchList();
+        });
     }
 
     function editLink(slug, url) {
